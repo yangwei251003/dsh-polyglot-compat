@@ -1,0 +1,63 @@
+diff --git a/src/adapter.ts b/src/adapter.ts
+index 651b518..04e38e4 100644
+--- a/src/adapter.ts
++++ b/src/adapter.ts
+@@ -141,6 +141,18 @@ export class OpenAiCompatAdapter extends LlmAdapter {
+     });
+   }
+ 
++  /**
++   * DSH 0.3.6 freezes model metadata and dispatch at the start of every step.
++   * dsh-polyglot still supports the older 0.1.0-rc.6 SDK at build time, where
++   * this hook was not declared on LlmAdapter, so keep the method unannotated.
++   */
++  async prepareCall(provider: string, model: string, signal?: AbortSignal) {
++    return {
++      model: await this.resolveModel(provider, model, signal),
++      stream: (options: GenerateOptions) => this.stream(options),
++    };
++  }
++
+   override async *stream(options: GenerateOptions): AsyncGenerator<StreamChunk> {
+     const connection = this.#config.options();
+     const apiKey = connection.authKind === 'none' ? '' : await this.#config.resolveApiKey(connection);
+diff --git a/src/index.ts b/src/index.ts
+index 3e9cfdd..405a7dd 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -367,9 +367,12 @@ export function apply(ctx: Context, raw: ConfigInput | ConfigType): void {
+   registerPolyglotCommandsSafe(ctx, deps);
+ }
+ 
+-/** Mount the human commands when the commands service is present. */
++/** Mount the human commands once the optional commands service is present. */
+ function registerPolyglotCommandsSafe(ctx: Context, deps: PolyglotCommandDeps): void {
+-  const commands = ctx.get('commands');
+-  if (commands === undefined) return;
+-  registerPolyglotCommands(ctx, deps);
++  // Cordis service properties may only be read from a context that explicitly
++  // injects them.  Using a scoped injection also keeps headless compositions
++  // valid: the model router still works when the commands service is absent.
++  ctx.inject(['commands'], (commandsCtx) => {
++    registerPolyglotCommands(commandsCtx, deps);
++  });
+ }
+diff --git a/src/router.ts b/src/router.ts
+index 080499c..5725067 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -206,6 +206,14 @@ export class PolyglotRouterAdapter extends LlmAdapter {
+     });
+   }
+ 
++  /** Compatibility hook required by the DSH 0.3.6 per-step call seam. */
++  async prepareCall(provider: string, model: string, signal?: AbortSignal) {
++    return {
++      model: await this.resolveModel(provider, model, signal),
++      stream: (options: GenerateOptions) => this.stream(options),
++    };
++  }
++
+   #resolveFrom(
+     provider: string,
+     model: string,

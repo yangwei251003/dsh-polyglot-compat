@@ -1,0 +1,12 @@
+node_modules/
+lib/
+*.tsbuildinfo
+*.tgz
+.DS_Store
+
+node_modules/
+lib/
+.env*
+*-user.json
+%USERPROFILE%/
+.dsh/
